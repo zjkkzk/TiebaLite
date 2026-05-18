@@ -115,6 +115,10 @@ class PbPageRepository @Inject constructor(
         networkDataSource.requestLikeSubpost(threadId, subPost.id, like)
     }
 
+    suspend fun requestPollPost(forumId: Long?, threadId: Long, options: List<Int>) {
+        networkDataSource.requestPollPost(forumId, threadId, options.joinToString(separator = ","))
+    }
+
     suspend fun pbPage(
         threadId: Long,
         page: Int = 1,

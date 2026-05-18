@@ -37,6 +37,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -64,6 +65,7 @@ import com.huanchengfly.tieba.post.navigateDebounced
 import com.huanchengfly.tieba.post.theme.TiebaLiteTheme
 import com.huanchengfly.tieba.post.ui.common.PbContentText
 import com.huanchengfly.tieba.post.ui.common.theme.compose.clickableNoIndication
+import com.huanchengfly.tieba.post.ui.common.theme.compose.onNotNull
 import com.huanchengfly.tieba.post.ui.models.PostData
 import com.huanchengfly.tieba.post.ui.models.SubPostItemData
 import com.huanchengfly.tieba.post.ui.page.Destination.CopyText
@@ -111,7 +113,14 @@ private fun LazyListState.firstVisiblePostOffset(): Int {
 }
 
 @Composable
-private fun PollOption(title: String, percentage: String, num: Long, total: Long, polled: Boolean) {
+private fun PollOption(
+    title: String,
+    percentage: String,
+    num: Long,
+    total: Long,
+    polled: Boolean,
+    onClick: (() -> Unit)? = null,
+) {
     val colorScheme = MaterialTheme.colorScheme
     val optionColor = colorScheme.background.copy(0.3f)
     val progressColor = if (polled) colorScheme.primaryContainer else colorScheme.background
@@ -120,6 +129,7 @@ private fun PollOption(title: String, percentage: String, num: Long, total: Long
         modifier = Modifier
             .border(width = 1.dp, color = progressColor, shape = CircleShape)
             .clip(shape = CircleShape)
+            .onNotNull(onClick) { clickable(onClick = it) }
             .drawBehind {
                 val cornerRadius = CornerRadius(size.height, size.height)
                 drawRoundRect(color = optionColor, cornerRadius = cornerRadius)
@@ -147,7 +157,7 @@ private fun PollOption(title: String, percentage: String, num: Long, total: Long
 }
 
 @Composable
-private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo) {
+private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo, onPull: ((List<Int>) -> Unit)? = null) {
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
     val percentages = remember {
@@ -158,7 +168,13 @@ private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo) {
         }
     }
     // ID of polled option
-    val polledId = if (info.polled_value.isNotEmpty()) info.polled_value.toIntOrNull() else null
+    val polledIds = remember(info.is_polled) {
+        mutableStateSetOf<Int>().apply {
+            if (info.polled_value.isNotEmpty()) {
+                addAll(info.polled_value.split(",").map { it.toInt() })
+            }
+        }
+    }
 
     Surface(
         modifier = modifier,
@@ -168,12 +184,22 @@ private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo) {
         Column(
             modifier = Modifier.padding(12.dp),
         ) {
-            Text(text = info.title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = info.title.ifEmpty { stringResource(R.string.text_poll_title) },
+                style = MaterialTheme.typography.titleMedium
+            )
+            Row {
+                if (info.total_poll > 0) {
+                    Text(
+                        text = stringResource(R.string.text_poll_votes, info.total_poll),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
 
-            if (info.total_poll > 0) {
                 Text(
-                    text = stringResource(R.string.text_poll_votes, info.total_poll),
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = stringResource(if (info.is_multi == 1) R.string.text_poll_multi else R.string.text_poll_single),
+                    modifier = Modifier.padding(horizontal = 6.dp),
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
 
@@ -188,7 +214,11 @@ private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo) {
                         percentage = percentages[i],
                         num = it.num,
                         total = info.total_poll,
-                        polled = it.id == polledId,
+                        polled = polledIds.contains(it.id),
+                        onClick = {
+                            if (polledIds.contains(it.id)) polledIds.remove(it.id) else polledIds.add(it.id)
+                            Unit
+                        }.takeIf { info.is_polled == 0 && onPull != null },
                     )
                 }
             }
@@ -274,7 +304,8 @@ fun StateScreenScope.ThreadContent(
                     state.thread?.pollInfo?.let { pollInfo ->
                         ThreadPoll(
                             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                            info = pollInfo
+                            info = pollInfo,
+                            onPull = viewModel::requestPollPost.takeIf { localUid != null },
                         )
                     }
 

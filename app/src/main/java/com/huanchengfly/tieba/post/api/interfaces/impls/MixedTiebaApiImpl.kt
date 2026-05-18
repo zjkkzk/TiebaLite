@@ -52,6 +52,9 @@ import com.huanchengfly.tieba.post.api.models.WebUploadPicBean
 import com.huanchengfly.tieba.post.api.models.protos.addPost.AddPostRequest
 import com.huanchengfly.tieba.post.api.models.protos.addPost.AddPostRequestData
 import com.huanchengfly.tieba.post.api.models.protos.addPost.AddPostResponse
+import com.huanchengfly.tieba.post.api.models.protos.addPollPost.AddPollPostReponse
+import com.huanchengfly.tieba.post.api.models.protos.addPollPost.AddPollPostRequest
+import com.huanchengfly.tieba.post.api.models.protos.addPollPost.AddPollPostRequestDate
 import com.huanchengfly.tieba.post.api.models.protos.forumGuide.ForumGuideRequest
 import com.huanchengfly.tieba.post.api.models.protos.forumGuide.ForumGuideRequestData
 import com.huanchengfly.tieba.post.api.models.protos.forumGuide.ForumGuideResponse
@@ -1544,4 +1547,27 @@ object MixedTiebaApiImpl : ITiebaApi {
         emit(finalBean)
     }.flowOn(Dispatchers.IO)
 
+    override fun addPollPost(forumId: Long?, threadId: Long, option: String): Flow<CommonResponse> =
+        RetrofitTiebaApi.HYBRID_TIEBA_API.addPollPost(
+            forumId,
+            threadId,
+            option
+        )
+
+    override fun addPollPostProtobuf(
+        forumId: Long?,
+        threadId: Long,
+        option: String
+    ): Flow<AddPollPostReponse> =
+        RetrofitTiebaApi.OFFICIAL_PROTOBUF_TIEBA_POST_API.addPollPostProtobuf(
+            buildProtobufRequestBody(
+                AddPollPostRequest(
+                    AddPollPostRequestDate(
+                        forum_id = forumId ?: 0L,
+                        thread_id = threadId,
+                        options = option,
+                    )
+                )
+            )
+        )
 }

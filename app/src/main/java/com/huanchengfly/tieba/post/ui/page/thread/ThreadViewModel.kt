@@ -540,6 +540,16 @@ class ThreadViewModel @Inject constructor(
         }
     }
 
+    fun requestPollPost(options: List<Int>) = launchInVM {
+        runCatching {
+            threadRepo.requestPollPost(forumId, threadId, options)
+        }
+        .onFailure { e ->
+            sendUiEvent(CommonUiEvent.ToastError(e))
+        }
+        //.onSuccess
+    }
+
     fun onSeeLzChanged() {
         val newState = _uiState.updateAndGet { it.copy(seeLz = !it.seeLz) }
         val collectMarkPid = newState.thread?.collectMarkPid

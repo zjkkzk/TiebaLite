@@ -54,6 +54,12 @@ object ThreadNetworkDataSource {
         requestLike(threadId, postId, like, objType = 3)
     }
 
+    suspend fun requestPollPost(forumId: Long?, threadId: Long, options: String) {
+        TiebaApi.getInstance()
+            .addPollPostProtobuf(forumId, threadId, options)
+            .firstOrThrow()
+    }
+
     suspend fun pbPageRaw(
         threadId: Long,
         page: Int = 1,
