@@ -1,5 +1,6 @@
 package com.huanchengfly.tieba.post.ui.page.thread
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,8 +23,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AlignVerticalTop
+import androidx.compose.material.icons.rounded.Poll
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.sharp.AccessTime
+import androidx.compose.material.icons.sharp.Check
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,6 +40,7 @@ import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateSetOf
 import androidx.compose.runtime.remember
@@ -44,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -59,7 +63,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.huanchengfly.tieba.post.MacrobenchmarkConstant.testColumn
 import com.huanchengfly.tieba.post.PaddingNone
 import com.huanchengfly.tieba.post.R
-import com.huanchengfly.tieba.post.api.models.protos.PollInfo
 import com.huanchengfly.tieba.post.api.models.protos.PollOption
 import com.huanchengfly.tieba.post.navigateDebounced
 import com.huanchengfly.tieba.post.theme.TiebaLiteTheme
@@ -68,6 +71,7 @@ import com.huanchengfly.tieba.post.ui.common.theme.compose.clickableNoIndication
 import com.huanchengfly.tieba.post.ui.common.theme.compose.onNotNull
 import com.huanchengfly.tieba.post.ui.models.PostData
 import com.huanchengfly.tieba.post.ui.models.SubPostItemData
+import com.huanchengfly.tieba.post.ui.models.ThreadPollInfo
 import com.huanchengfly.tieba.post.ui.page.Destination.CopyText
 import com.huanchengfly.tieba.post.ui.page.Destination.Thread
 import com.huanchengfly.tieba.post.ui.page.Destination.UserProfile
@@ -80,6 +84,7 @@ import com.huanchengfly.tieba.post.ui.widgets.compose.Chip
 import com.huanchengfly.tieba.post.ui.widgets.compose.LoadMoreIndicator
 import com.huanchengfly.tieba.post.ui.widgets.compose.LongClickMenu
 import com.huanchengfly.tieba.post.ui.widgets.compose.OriginThreadCard
+import com.huanchengfly.tieba.post.ui.widgets.compose.OutlinedIconTextButton
 import com.huanchengfly.tieba.post.ui.widgets.compose.ProvideContentColor
 import com.huanchengfly.tieba.post.ui.widgets.compose.SharedTransitionUserHeader
 import com.huanchengfly.tieba.post.ui.widgets.compose.Sizes
@@ -127,23 +132,29 @@ private fun PollOption(
 
     Row(
         modifier = Modifier
-            .border(width = 1.dp, color = progressColor, shape = CircleShape)
+            .border(width = 1.5.dp, color = progressColor, shape = CircleShape)
             .clip(shape = CircleShape)
             .onNotNull(onClick) { clickable(onClick = it) }
             .drawBehind {
-                val cornerRadius = CornerRadius(size.height, size.height)
-                drawRoundRect(color = optionColor, cornerRadius = cornerRadius)
+                drawRect(color = optionColor)
                 if (num > 0) {
-                    drawRoundRect(
+                    drawRect(
                         color = progressColor,
                         size = size.copy(width = size.width * num / total.toFloat()),
-                        cornerRadius = cornerRadius
                     )
                 }
             }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        AnimatedVisibility(polled) {
+            Icon(
+                imageVector = Icons.Sharp.Check,
+                contentDescription = null,
+                modifier = Modifier.padding(end = ButtonDefaults.IconSpacing).size(14.dp),
+                tint = colorScheme.onPrimaryContainer
+            )
+        }
         Text(
             text = title,
             modifier = Modifier.weight(1.0f),
@@ -157,24 +168,23 @@ private fun PollOption(
 }
 
 @Composable
-private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo, onPull: ((List<Int>) -> Unit)? = null) {
+private fun ThreadPoll(modifier: Modifier = Modifier, info: ThreadPollInfo, onPull: ((List<Int>) -> Unit)? = null) {
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
-    val percentages = remember {
+    val percentages = remember(info.options) {
         val numberFormat = NumberFormat.getNumberInstance()
         numberFormat.maximumFractionDigits = 0
         info.options.fastMap {
-            "${numberFormat.format(it.num / info.total_poll.toDouble() * 100)}%"
+            "${numberFormat.format(it.num / info.totalPoll.toDouble() * 100)}%"
         }
     }
     // ID of polled option
-    val polledIds = remember(info.is_polled) {
+    val polledIds = remember(info.polledValue) {
         mutableStateSetOf<Int>().apply {
-            if (info.polled_value.isNotEmpty()) {
-                addAll(info.polled_value.split(",").map { it.toInt() })
-            }
+            if (!info.polledValue.isNullOrEmpty()) addAll(info.polledValue)
         }
     }
+    val pollEnabled = !info.isPolled && onPull != null && !info.isTimeExpired
 
     Surface(
         modifier = modifier,
@@ -185,19 +195,19 @@ private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo, onPull: ((
             modifier = Modifier.padding(12.dp),
         ) {
             Text(
-                text = info.title.ifEmpty { stringResource(R.string.text_poll_title) },
+                text = info.title ?: stringResource(R.string.text_poll_title),
                 style = MaterialTheme.typography.titleMedium
             )
             Row {
-                if (info.total_poll > 0) {
+                if (info.totalPoll > 0) {
                     Text(
-                        text = stringResource(R.string.text_poll_votes, info.total_poll),
+                        text = stringResource(R.string.text_poll_votes, info.totalPoll),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
 
                 Text(
-                    text = stringResource(if (info.is_multi == 1) R.string.text_poll_multi else R.string.text_poll_single),
+                    text = stringResource(if (info.isMulti) R.string.text_poll_multi else R.string.text_poll_single),
                     modifier = Modifier.padding(horizontal = 6.dp),
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -213,19 +223,24 @@ private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo, onPull: ((
                         title = it.text,
                         percentage = percentages[i],
                         num = it.num,
-                        total = info.total_poll,
+                        total = info.totalPoll,
                         polled = polledIds.contains(it.id),
                         onClick = {
-                            if (polledIds.contains(it.id)) polledIds.remove(it.id) else polledIds.add(it.id)
-                            Unit
-                        }.takeIf { info.is_polled == 0 && onPull != null },
+                            if (!pollEnabled || info.isLoading) return@PollOption
+                            if (polledIds.contains(it.id)) {
+                                polledIds -= it.id
+                            } else {
+                                if (!info.isMulti) polledIds.clear()
+                                polledIds += it.id
+                            }
+                        },
                     )
                 }
             }
 
-            if (info.end_time > 0) {
+            if (info.endTime > 0) {
                 val endTime = remember {
-                    DateTimeUtils.getRelativeTimeString(context, info.end_time * 1000L)
+                    DateTimeUtils.getRelativeTimeString(context, info.endTime)
                 }
                 ProvideContentColor(color = colorScheme.onSurfaceVariant) {
                     Spacer(modifier = Modifier.height(12.dp))
@@ -240,6 +255,29 @@ private fun ThreadPoll(modifier: Modifier = Modifier, info: PollInfo, onPull: ((
                             text = stringResource(R.string.text_poll_end_time, endTime),
                             style = MaterialTheme.typography.labelMedium,
                         )
+                    }
+                }
+            }
+
+            if (pollEnabled) {
+                AnimatedVisibility(
+                    visible = remember { derivedStateOf { polledIds.isNotEmpty() } }.value,
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    OutlinedIconTextButton(
+                        onClick = { onPull(polledIds.toList()) },
+                        modifier = Modifier.padding(top = 8.dp),
+                        enabled = !info.isLoading,
+                        border = ButtonDefaults.outlinedButtonBorder(enabled = true),
+                        icon = {
+                            if (info.isLoading) {
+                                CircularProgressIndicator()
+                            } else {
+                                Icon(Icons.Rounded.Poll, contentDescription = null)
+                            }
+                        },
+                    ) {
+                        Text(text = stringResource(id = R.string.text_poll_title))
                     }
                 }
             }
@@ -790,16 +828,16 @@ private fun ThreadHeaderPreview() {
 @Composable
 private fun ThreadPollPreview() = TiebaLiteTheme {
     ThreadPoll(
-        info = PollInfo(
+        info = ThreadPollInfo(
+            title = "来投票",
+            totalPoll = 173,
             options = listOf(
                 PollOption(id = 0, num=143, text="Test 1"),
                 PollOption(id = 1, num=25, text="Test 2"),
                 PollOption(id = 2, num=5, text="Test 3"),
             ),
-            end_time = Instant.parse("2020-08-30T18:00:00Z").epochSeconds.toInt(),
-            total_poll = 173,
-            polled_value = "2",
-            title = "来投票",
-        )
+            endTime = Instant.parse("2020-08-30T18:00:00Z").toEpochMilliseconds(),
+            polledValue = listOf(0, 2),
+        ),
     )
 }

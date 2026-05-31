@@ -13,7 +13,6 @@ import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastMap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.NavController
 import androidx.navigation.toRoute
 import com.huanchengfly.tieba.post.R
 import com.huanchengfly.tieba.post.api.Error
@@ -541,13 +540,20 @@ class ThreadViewModel @Inject constructor(
     }
 
     fun requestPollPost(options: List<Int>) = launchInVM {
+        val thread = currentState.thread!!
+        if (thread.pollInfo!!.isLoading) return@launchInVM
+
+        _uiState.update { it.copy(thread = thread.updatePollStatus(loading = true)) }
         runCatching {
             threadRepo.requestPollPost(forumId, threadId, options)
         }
         .onFailure { e ->
             sendUiEvent(CommonUiEvent.ToastError(e))
+            _uiState.update { it.copy(thread = thread.updatePollStatus(loading = false)) }
         }
-        //.onSuccess
+        .onSuccess { pollInfo ->
+            _uiState.update { it.copy(thread = thread.copy(pollInfo = pollInfo)) }
+        }
     }
 
     fun onSeeLzChanged() {

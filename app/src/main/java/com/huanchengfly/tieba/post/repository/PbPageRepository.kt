@@ -33,6 +33,7 @@ import com.huanchengfly.tieba.post.ui.models.SimpleForum
 import com.huanchengfly.tieba.post.ui.models.SubPostItemData
 import com.huanchengfly.tieba.post.ui.models.ThreadInfoData
 import com.huanchengfly.tieba.post.ui.models.ThreadItem
+import com.huanchengfly.tieba.post.ui.models.ThreadPollInfo
 import com.huanchengfly.tieba.post.ui.models.UserData
 import com.huanchengfly.tieba.post.ui.page.thread.ThreadSortType
 import com.huanchengfly.tieba.post.utils.DateTimeUtils
@@ -115,8 +116,11 @@ class PbPageRepository @Inject constructor(
         networkDataSource.requestLikeSubpost(threadId, subPost.id, like)
     }
 
-    suspend fun requestPollPost(forumId: Long?, threadId: Long, options: List<Int>) {
+    suspend fun requestPollPost(forumId: Long?, threadId: Long, options: List<Int>): ThreadPollInfo {
+        require(options.isNotEmpty())
         networkDataSource.requestPollPost(forumId, threadId, options.joinToString(separator = ","))
+        // Load latest poll info
+        return pbPage(threadId, forumId = forumId).thread.pollInfo!!
     }
 
     suspend fun pbPage(
@@ -322,7 +326,18 @@ class PbPageRepository @Inject constructor(
         originThreadInfo = origin_thread_info?.takeIf { is_share_thread == 1 }?.wrapImmutable(),
         replyNum = replyNum,
         simpleForum = forumInfo!!.let { SimpleForum(it.id, it.name, it.avatar) },
-        pollInfo = origin_thread_info?.poll_info?.takeIf { it.options.isNotEmpty() },
+        pollInfo = origin_thread_info?.poll_info?.takeIf { it.options.isNotEmpty() }?.let {
+            ThreadPollInfo(
+                title = it.title.takeUnless { title -> title.isEmpty() },
+                totalPoll = it.total_poll,
+                options = it.options,
+                endTime = it.end_time * 1000L,
+                isMulti = it.is_multi == 1,
+                polledValue = if (it.polled_value.isNotEmpty()) {
+                    it.polled_value.split(",").map { id -> id.toInt() }
+                } else null
+            )
+        },
     )
 }
 
