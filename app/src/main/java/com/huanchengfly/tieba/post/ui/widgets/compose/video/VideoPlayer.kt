@@ -102,7 +102,6 @@ fun retainVideoPlayerController(
 fun VideoPlayer(
     modifier: Modifier = Modifier,
     videoPlayerController: VideoPlayerController,
-    contentScale: ContentScale = ContentScale.Fit,
     controlsEnabled: Boolean = true,
     gesturesEnabled: Boolean = true,
     backgroundColor: Color = Color.Black
@@ -129,11 +128,10 @@ fun VideoPlayer(
         LocalVideoPlayerController provides videoPlayerController
     ) {
         val isFullScreen = DisplayUtil.isLandscape
-        if (videoPlayerController.supportFullScreen()) {
+        val contentScale = if (isFullScreen) ContentScale.FillHeight else ContentScale.FillWidth
 
-            BackHandler(enabled = isFullScreen) {
-                videoPlayerController.toggleFullScreen()
-            }
+        if (videoPlayerController.supportFullScreen()) { // Exit full screen on back
+            BackHandler(enabled = isFullScreen, onBack = videoPlayerController::toggleFullScreen)
         }
 
         Box(
@@ -155,13 +153,13 @@ fun VideoPlayer(
                 val thumbnailUrl by videoPlayerController.collect { thumbnailUrl }
                 if (!thumbnailUrl.isNullOrEmpty()) {
                     VideoThumbnail(
-                        modifier = Modifier.matchParentSize(),
+                        modifier = Modifier.matchParentSize().background(backgroundColor),
                         thumbnailUrl = thumbnailUrl,
-                        contentScale = if (isFullScreen) ContentScale.FillHeight else ContentScale.FillWidth,
+                        contentScale = contentScale,
                         onClick = { videoPlayerController.play() }
                     )
                 } else {
-                    Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+                    Box(modifier = Modifier.matchParentSize().background(backgroundColor))
                 }
             }
 
